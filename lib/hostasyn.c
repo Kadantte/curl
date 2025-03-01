@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2021, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -17,6 +17,8 @@
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 
@@ -41,16 +43,11 @@
 #include <inet.h>
 #endif
 
-#ifdef HAVE_PROCESS_H
-#include <process.h>
-#endif
-
 #include "urldata.h"
 #include "sendf.h"
 #include "hostip.h"
 #include "hash.h"
 #include "share.h"
-#include "strerror.h"
 #include "url.h"
 #include "curl_memory.h"
 /* The last #include file should be: */
@@ -73,16 +70,14 @@ CURLcode Curl_addrinfo_callback(struct Curl_easy *data,
   struct Curl_dns_entry *dns = NULL;
   CURLcode result = CURLE_OK;
 
-  data->state.async.status = status;
-
   if(CURL_ASYNC_SUCCESS == status) {
     if(ai) {
       if(data->share)
         Curl_share_lock(data, CURL_LOCK_DATA_DNS, CURL_LOCK_ACCESS_SINGLE);
 
       dns = Curl_cache_addr(data, ai,
-                            data->state.async.hostname,
-                            data->state.async.port);
+                            data->conn->host.dispname, 0,
+                            data->conn->localport, FALSE);
       if(data->share)
         Curl_share_unlock(data, CURL_LOCK_DATA_DNS);
 

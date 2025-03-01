@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2021, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -17,6 +17,8 @@
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 #include "curlcheck.h"
@@ -30,10 +32,10 @@
  * updated to still be valid.
  */
 
-static struct Curl_easy *data;
+static struct Curl_easy *testdata;
 
 static char input[4096];
-static char result[4096];
+static char output[4096];
 
 int debugf_cb(CURL *handle, curl_infotype type, char *buf, size_t size,
               void *userptr);
@@ -51,85 +53,113 @@ debugf_cb(CURL *handle, curl_infotype type, char *buf, size_t size,
   (void)type;
   (void)userptr;
 
-  memset(result, '\0', sizeof(result));
-  memcpy(result, buf, size);
+  memset(output, '\0', sizeof(output));
+  memcpy(output, buf, size);
   return 0;
 }
 
 static CURLcode
 unit_setup(void)
 {
-  int res = 0;
+  CURLcode res = CURLE_OK;
 
   global_init(CURL_GLOBAL_ALL);
-  data = curl_easy_init();
-  if(!data) {
+  testdata = curl_easy_init();
+  if(!testdata) {
     curl_global_cleanup();
     return CURLE_OUT_OF_MEMORY;
   }
-  curl_easy_setopt(data, CURLOPT_DEBUGFUNCTION, debugf_cb);
-  curl_easy_setopt(data, CURLOPT_VERBOSE, 1L);
-  return CURLE_OK;
+  curl_easy_setopt(testdata, CURLOPT_DEBUGFUNCTION, debugf_cb);
+  curl_easy_setopt(testdata, CURLOPT_VERBOSE, 1L);
+  return res;
 }
 
 static void
 unit_stop(void)
 {
-  curl_easy_cleanup(data);
+  curl_easy_cleanup(testdata);
   curl_global_cleanup();
+}
+
+static int verify(const char *info, const char *two)
+{
+  /* the 'info' one has a newline appended */
+  char *nl = strchr(info, '\n');
+  if(!nl)
+    return 1; /* nope */
+  return strncmp(info, two, nl - info);
 }
 
 UNITTEST_START
 
+#if defined(CURL_GNUC_DIAG) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-zero-length"
+#if __GNUC__ >= 7
+#pragma GCC diagnostic ignored "-Wformat-overflow"
+#endif
+#endif
+
 /* Injecting a simple short string via a format */
 msnprintf(input, sizeof(input), "Simple Test");
-Curl_infof(data, "%s", input);
-fail_unless(strcmp(result, input) == 0, "Simple string test");
+Curl_infof(testdata, "%s", input);
+fail_unless(verify(output, input) == 0, "Simple string test");
 
 /* Injecting a few different variables with a format */
-Curl_infof(data, "%s %u testing %lu\n", input, 42, 43L);
-fail_unless(strcmp(result, "Simple Test 42 testing 43\n") == 0,
+Curl_infof(testdata, "%s %u testing %lu", input, 42, 43L);
+fail_unless(verify(output, "Simple Test 42 testing 43\n") == 0,
             "Format string");
 
 /* Variations of empty strings */
-Curl_infof(data, "");
-fail_unless(strlen(result) == 0, "Empty string");
-Curl_infof(data, "%s", NULL);
-fail_unless(strcmp(result, "(nil)") == 0, "Passing NULL as string");
+Curl_infof(testdata, "");
+fail_unless(strlen(output) == 1, "Empty string");
+Curl_infof(testdata, "%s", (char *)NULL);
+fail_unless(verify(output, "(nil)") == 0, "Passing NULL as string");
+
+/* Note: libcurl's tracebuffer hold 2048 bytes, so the max strlen() we
+ * get out of it is 2047, since we need a \0 at the end.
+ * Curl_infof() in addition adds a \n at the end, making the effective
+ * output 2046 characters.
+ * Any input that long or longer will truncated, ending in '...\n'.
+ */
 
 /* A string just long enough to not be truncated */
 memset(input, '\0', sizeof(input));
-memset(input, 'A', 2048);
-Curl_infof(data, "%s", input);
-fail_unless(strlen(result) == 2048, "No truncation of infof input");
-fail_unless(strcmp(result, input) == 0, "No truncation of infof input");
-fail_unless(result[sizeof(result) - 1] == '\0',
+memset(input, 'A', 2045);
+Curl_infof(testdata, "%s", input);
+fprintf(stderr, "output len %d: %s", (int)strlen(output), output);
+/* output is input + \n */
+fail_unless(strlen(output) == 2046, "No truncation of infof input");
+fail_unless(verify(output, input) == 0, "No truncation of infof input");
+fail_unless(output[sizeof(output) - 1] == '\0',
             "No truncation of infof input");
 
-/* Just over the limit for truncation without newline */
-memset(input + 2047, 'A', 4);
-Curl_infof(data, "%s", input);
-fail_unless(strlen(result) == 2048, "Truncation of infof input 1");
-fail_unless(result[sizeof(result) - 1] == '\0', "Truncation of infof input 1");
-fail_unless(strncmp(result + 2045, "...", 3) == 0,
-            "Truncation of infof input 1");
+/* Just over the limit without newline for truncation via '...' */
+memset(input + 2045, 'A', 4);
+Curl_infof(testdata, "%s", input);
+fprintf(stderr, "output len %d: %s", (int)strlen(output), output);
+fail_unless(strlen(output) == 2047, "Truncation of infof input 1");
+fail_unless(output[sizeof(output) - 1] == '\0', "Truncation of infof input 1");
 
-/* Just over the limit for truncation with newline */
-memset(input + 2047, 'A', 4);
-memset(input + 2047 + 4, '\n', 1);
-Curl_infof(data, "%s\n", input);
-fail_unless(strlen(result) == 2048, "Truncation of infof input 2");
-fail_unless(result[sizeof(result) - 1] == '\0', "Truncation of infof input 2");
-fail_unless(strncmp(result + 2044, "...", 3) == 0,
-            "Truncation of infof input 2");
+/* Just over the limit with newline for truncation via '...' */
+memset(input + 2045, 'A', 4);
+memset(input + 2045 + 4, '\n', 1);
+Curl_infof(testdata, "%s", input);
+fprintf(stderr, "output len %d: %s", (int)strlen(output), output);
+fail_unless(strlen(output) == 2047, "Truncation of infof input 2");
+fail_unless(output[sizeof(output) - 1] == '\0', "Truncation of infof input 2");
 
-/* Way over the limit for truncation with newline */
+/* Way over the limit for truncation via '...' */
 memset(input, '\0', sizeof(input));
 memset(input, 'A', sizeof(input) - 1);
-Curl_infof(data, "%s\n", input);
-fail_unless(strlen(result) == 2048, "Truncation of infof input 3");
-fail_unless(result[sizeof(result) - 1] == '\0', "Truncation of infof input 3");
-fail_unless(strncmp(result + 2044, "...", 3) == 0,
-            "Truncation of infof input 3");
+Curl_infof(testdata, "%s", input);
+fprintf(stderr, "output len %d: %s", (int)strlen(output), output);
+fail_unless(strlen(output) == 2047, "Truncation of infof input 3");
+fail_unless(output[sizeof(output) - 1] == '\0', "Truncation of infof input 3");
+
+#if defined(CURL_GNUC_DIAG) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 
 UNITTEST_STOP

@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -17,6 +17,8 @@
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 #include "curlcheck.h"
@@ -273,16 +275,15 @@ enum system {
 
 UNITTEST_START
 {
-  int testnum = sizeof(tests) / sizeof(struct testcase);
   int i;
   enum system machine;
 
 #ifdef HAVE_FNMATCH
-  if(strstr(OS, "apple") || strstr(OS, "darwin")) {
-    machine = SYSTEM_MACOS;
-  }
-  else
-    machine = SYSTEM_LINUX;
+#ifdef __APPLE__
+  machine = SYSTEM_MACOS;
+#else
+  machine = SYSTEM_LINUX;
+#endif
   printf("Tested with system fnmatch(), %s-style\n",
          machine == SYSTEM_LINUX ? "linux" : "mac");
 #else
@@ -290,7 +291,7 @@ UNITTEST_START
   machine = SYSTEM_CUSTOM;
 #endif
 
-  for(i = 0; i < testnum; i++) {
+  for(i = 0; i < (int)CURL_ARRAYSIZE(tests); i++) {
     int result = tests[i].result;
     int rc = Curl_fnmatch(NULL, tests[i].pattern, tests[i].string);
     if(result & (LINUX_DIFFER|MAC_DIFFER)) {
@@ -314,10 +315,6 @@ UNITTEST_STOP
 #else
 
 UNITTEST_START
-{
-  /* nothing to do, just fail */
-  return 1;
-}
 UNITTEST_STOP
 
 #endif

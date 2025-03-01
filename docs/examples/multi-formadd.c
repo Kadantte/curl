@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -18,15 +18,21 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
+ * SPDX-License-Identifier: curl
+ *
  ***************************************************************************/
 /* <DESC>
  * using the multi interface to do a multipart formpost without blocking
  * </DESC>
  */
 
+/*
+ * Warning: this example uses the deprecated form api. See "multi-post.c"
+ *          for a similar example using the mime api.
+ */
+
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
 
 #include <curl/curl.h>
 
@@ -42,27 +48,29 @@ int main(void)
   struct curl_slist *headerlist = NULL;
   static const char buf[] = "Expect:";
 
-  /* Fill in the file upload field. This makes libcurl load data from
-     the given file name when curl_easy_perform() is called. */
-  curl_formadd(&formpost,
-               &lastptr,
-               CURLFORM_COPYNAME, "sendfile",
-               CURLFORM_FILE, "postit2.c",
-               CURLFORM_END);
+  CURL_IGNORE_DEPRECATION(
+    /* Fill in the file upload field. This makes libcurl load data from
+       the given file name when curl_easy_perform() is called. */
+    curl_formadd(&formpost,
+                 &lastptr,
+                 CURLFORM_COPYNAME, "sendfile",
+                 CURLFORM_FILE, "multi-formadd.c",
+                 CURLFORM_END);
 
-  /* Fill in the filename field */
-  curl_formadd(&formpost,
-               &lastptr,
-               CURLFORM_COPYNAME, "filename",
-               CURLFORM_COPYCONTENTS, "postit2.c",
-               CURLFORM_END);
+    /* Fill in the filename field */
+    curl_formadd(&formpost,
+                 &lastptr,
+                 CURLFORM_COPYNAME, "filename",
+                 CURLFORM_COPYCONTENTS, "multi-formadd.c",
+                 CURLFORM_END);
 
-  /* Fill in the submit field too, even if this is rarely needed */
-  curl_formadd(&formpost,
-               &lastptr,
-               CURLFORM_COPYNAME, "submit",
-               CURLFORM_COPYCONTENTS, "send",
-               CURLFORM_END);
+    /* Fill in the submit field too, even if this is rarely needed */
+    curl_formadd(&formpost,
+                 &lastptr,
+                 CURLFORM_COPYNAME, "submit",
+                 CURLFORM_COPYCONTENTS, "send",
+                 CURLFORM_END);
+  )
 
   curl = curl_easy_init();
   multi_handle = curl_multi_init();
@@ -77,92 +85,33 @@ int main(void)
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headerlist);
-    curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+    CURL_IGNORE_DEPRECATION(
+      curl_easy_setopt(curl, CURLOPT_HTTPPOST, formpost);
+    )
 
     curl_multi_add_handle(multi_handle, curl);
 
-    curl_multi_perform(multi_handle, &still_running);
+    do {
+      CURLMcode mc = curl_multi_perform(multi_handle, &still_running);
 
-    while(still_running) {
-      struct timeval timeout;
-      int rc; /* select() return code */
-      CURLMcode mc; /* curl_multi_fdset() return code */
+      if(still_running)
+        /* wait for activity, timeout or "nothing" */
+        mc = curl_multi_poll(multi_handle, NULL, 0, 1000, NULL);
 
-      fd_set fdread;
-      fd_set fdwrite;
-      fd_set fdexcep;
-      int maxfd = -1;
-
-      long curl_timeo = -1;
-
-      FD_ZERO(&fdread);
-      FD_ZERO(&fdwrite);
-      FD_ZERO(&fdexcep);
-
-      /* set a suitable timeout to play around with */
-      timeout.tv_sec = 1;
-      timeout.tv_usec = 0;
-
-      curl_multi_timeout(multi_handle, &curl_timeo);
-      if(curl_timeo >= 0) {
-        timeout.tv_sec = curl_timeo / 1000;
-        if(timeout.tv_sec > 1)
-          timeout.tv_sec = 1;
-        else
-          timeout.tv_usec = (curl_timeo % 1000) * 1000;
-      }
-
-      /* get file descriptors from the transfers */
-      mc = curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd);
-
-      if(mc != CURLM_OK) {
-        fprintf(stderr, "curl_multi_fdset() failed, code %d.\n", mc);
+      if(mc)
         break;
-      }
 
-      /* On success the value of maxfd is guaranteed to be >= -1. We call
-         select(maxfd + 1, ...); specially in case of (maxfd == -1) there are
-         no fds ready yet so we call select(0, ...) --or Sleep() on Windows--
-         to sleep 100ms, which is the minimum suggested value in the
-         curl_multi_fdset() doc. */
-
-      if(maxfd == -1) {
-#ifdef _WIN32
-        Sleep(100);
-        rc = 0;
-#else
-        /* Portable sleep for platforms other than Windows. */
-        struct timeval wait = { 0, 100 * 1000 }; /* 100ms */
-        rc = select(0, NULL, NULL, NULL, &wait);
-#endif
-      }
-      else {
-        /* Note that on some platforms 'timeout' may be modified by select().
-           If you need access to the original value save a copy beforehand. */
-        rc = select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout);
-      }
-
-      switch(rc) {
-      case -1:
-        /* select error */
-        break;
-      case 0:
-      default:
-        /* timeout or readable/writable sockets */
-        printf("perform!\n");
-        curl_multi_perform(multi_handle, &still_running);
-        printf("running: %d!\n", still_running);
-        break;
-      }
-    }
+    } while(still_running);
 
     curl_multi_cleanup(multi_handle);
 
     /* always cleanup */
     curl_easy_cleanup(curl);
 
-    /* then cleanup the formpost chain */
-    curl_formfree(formpost);
+    CURL_IGNORE_DEPRECATION(
+      /* then cleanup the formpost chain */
+      curl_formfree(formpost);
+    )
 
     /* free slist */
     curl_slist_free_all(headerlist);

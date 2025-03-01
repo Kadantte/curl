@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -17,6 +17,8 @@
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 #include "server_setup.h"
@@ -31,23 +33,17 @@
  *
  */
 
-#ifdef HAVE_SIGNAL_H
-#include <signal.h>
-#endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
 #ifdef _XOPEN_SOURCE_EXTENDED
-/* This define is "almost" required to build on HPUX 11 */
+/* This define is "almost" required to build on HP-UX 11 */
 #include <arpa/inet.h>
 #endif
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
 #endif
 
-#define ENABLE_CURLX_PRINTF
-/* make the curlx header define all printf() functions to use the curlx_*
-   versions instead */
 #include "curlx.h" /* from the private lib dir */
 #include "util.h"
 
@@ -65,7 +61,7 @@ int main(int argc, char *argv[])
   const char *host = NULL;
   int rc = 0;
 
-  while(argc>arg) {
+  while(argc > arg) {
     if(!strcmp("--version", argv[arg])) {
       printf("resolve IPv4%s\n",
 #if defined(CURLRES_IPV6)
@@ -102,9 +98,9 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-#ifdef WIN32
-  win32_init();
-  atexit(win32_cleanup);
+#ifdef _WIN32
+  if(win32_init())
+    return 2;
 #endif
 
 #if defined(CURLRES_IPV6)
@@ -128,11 +124,9 @@ int main(int argc, char *argv[])
     hints.ai_family = use_ipv6 ? PF_INET6 : PF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = 0;
-    /* Use parenthesis around functions to stop them from being replaced by
-       the macro in memdebug.h */
-    rc = (getaddrinfo)(host, "80", &hints, &ai);
+    rc = getaddrinfo(host, "80", &hints, &ai);
     if(rc == 0)
-      (freeaddrinfo)(ai);
+      freeaddrinfo(ai);
   }
 #else
   if(use_ipv6) {
@@ -143,7 +137,11 @@ int main(int argc, char *argv[])
     /* gethostbyname() resolve */
     struct hostent *he;
 
+#ifdef __AMIGA__
+    he = gethostbyname((unsigned char *)host);
+#else
     he = gethostbyname(host);
+#endif
 
     rc = !he;
   }

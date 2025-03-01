@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2021, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -17,6 +17,8 @@
  *
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
+ *
+ * SPDX-License-Identifier: curl
  *
  ***************************************************************************/
 #include "curlcheck.h"
@@ -34,7 +36,7 @@ static void unit_stop(void)
 
 static CURLcode unit_setup(void)
 {
-  int res = CURLE_OK;
+  CURLcode res = CURLE_OK;
 
   global_init(CURL_GLOBAL_ALL);
 
@@ -99,7 +101,6 @@ static const struct testcase tests[] = {
 UNITTEST_START
 {
   int i;
-  int testnum = sizeof(tests) / sizeof(struct testcase);
   struct Curl_multi *multi = NULL;
   struct Curl_easy *easy = NULL;
   struct curl_slist *list = NULL;
@@ -108,9 +109,9 @@ UNITTEST_START
   and also clean cache after the loop. In contrast,for example,
   test 1607 sets up and cleans cache on each iteration. */
 
-  for(i = 0; i < testnum; ++i) {
+  for(i = 0; i < (int)CURL_ARRAYSIZE(tests); ++i) {
     int j;
-    int addressnum = sizeof (tests[i].address) / sizeof (*tests[i].address);
+    int addressnum = CURL_ARRAYSIZE(tests[i].address);
     struct Curl_addrinfo *addr;
     struct Curl_dns_entry *dns;
     void *entry_id;
@@ -187,7 +188,7 @@ UNITTEST_START
 
       if(port != tests[i].port) {
         fprintf(stderr, "%s:%d tests[%d] failed. the retrieved port "
-                "for tests[%d].address[%d] is %ld but tests[%d].port is %d.\n",
+                "for tests[%d].address[%d] is %d but tests[%d].port is %d.\n",
                 __FILE__, __LINE__, i, i, j, port, i, tests[i].port);
         problem = true;
         break;
@@ -198,7 +199,6 @@ UNITTEST_START
 
     curl_easy_cleanup(easy);
     easy = NULL;
-    Curl_hash_destroy(&multi->hostcache);
     curl_multi_cleanup(multi);
     multi = NULL;
     curl_slist_free_all(list);
@@ -210,7 +210,7 @@ UNITTEST_START
     }
   }
   goto unit_test_abort;
-  error:
+error:
   curl_easy_cleanup(easy);
   curl_multi_cleanup(multi);
   curl_slist_free_all(list);

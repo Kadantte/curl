@@ -32,8 +32,8 @@ http
 
 <name>
 HTTP GET with 100-digit response code and survive
- </name>
- <command>
+</name>
+<command>
 http://%HOSTIP:%HTTPPORT/%TESTNUMBER
 </command>
 </client>
@@ -48,5 +48,8 @@ User-Agent: curl/%VERSION
 Accept: */*
 
 </protocol>
+<errorcode>
+1
+</errorcode>
 </verify>
 </testcase>

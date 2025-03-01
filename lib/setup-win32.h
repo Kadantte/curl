@@ -7,7 +7,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -20,56 +20,70 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
+ * SPDX-License-Identifier: curl
+ *
  ***************************************************************************/
 
-/*
- * Include header files for windows builds before redefining anything.
- * Use this preprocessor block only to include or exclude windows.h,
- * winsock2.h, ws2tcpip.h or winsock.h. Any other windows thing belongs
- * to any other further and independent block.  Under Cygwin things work
- * just as under linux (e.g. <sys/socket.h>) and the winsock headers should
- * never be included when __CYGWIN__ is defined.  configure script takes
- * care of this, not defining HAVE_WINDOWS_H, HAVE_WINSOCK_H, HAVE_WINSOCK2_H,
- * neither HAVE_WS2TCPIP_H when __CYGWIN__ is defined.
- */
-
-#ifdef HAVE_WINDOWS_H
-#  if defined(UNICODE) && !defined(_UNICODE)
-#    define _UNICODE
-#  endif
-#  if defined(_UNICODE) && !defined(UNICODE)
-#    define UNICODE
-#  endif
-#  include <winerror.h>
-#  include <windows.h>
-#  ifdef HAVE_WINSOCK2_H
-#    include <winsock2.h>
-#    ifdef HAVE_WS2TCPIP_H
-#      include <ws2tcpip.h>
-#    endif
-#  else
-#    ifdef HAVE_WINSOCK_H
-#      include <winsock.h>
-#    endif
-#  endif
-#  include <tchar.h>
-#  ifdef UNICODE
-     typedef wchar_t *(*curl_wcsdup_callback)(const wchar_t *str);
-#  endif
+#undef USE_WINSOCK
+/* ---------------------------------------------------------------- */
+/*                     Watt-32 TCP/IP SPECIFIC                      */
+/* ---------------------------------------------------------------- */
+#ifdef USE_WATT32
+#  include <tcp.h>
+#  undef byte
+#  undef word
+#  define HAVE_SYS_IOCTL_H
+#  define HAVE_SYS_SOCKET_H
+#  define HAVE_NETINET_IN_H
+#  define HAVE_NETDB_H
+#  define HAVE_ARPA_INET_H
+#  define SOCKET int
+/* ---------------------------------------------------------------- */
+/*               BSD-style lwIP TCP/IP stack SPECIFIC               */
+/* ---------------------------------------------------------------- */
+#elif defined(USE_LWIPSOCK)
+  /* Define to use BSD-style lwIP TCP/IP stack. */
+  /* #define USE_LWIPSOCK 1 */
+#  undef HAVE_GETHOSTNAME
+#  undef LWIP_POSIX_SOCKETS_IO_NAMES
+#  undef RECV_TYPE_ARG1
+#  undef RECV_TYPE_ARG3
+#  undef SEND_TYPE_ARG1
+#  undef SEND_TYPE_ARG3
+#  define HAVE_GETHOSTBYNAME_R
+#  define HAVE_GETHOSTBYNAME_R_6
+#  define LWIP_POSIX_SOCKETS_IO_NAMES 0
+#  define RECV_TYPE_ARG1 int
+#  define RECV_TYPE_ARG3 size_t
+#  define SEND_TYPE_ARG1 int
+#  define SEND_TYPE_ARG3 size_t
+#elif defined(_WIN32)
+#  define USE_WINSOCK 2
 #endif
 
 /*
- * Define USE_WINSOCK to 2 if we have and use WINSOCK2 API, else
- * undefine USE_WINSOCK.
+ * Include header files for Windows builds before redefining anything.
+ * Use this preprocessor block only to include or exclude windows.h,
+ * winsock2.h or ws2tcpip.h. Any other Windows thing belongs
+ * to any other further and independent block. Under Cygwin things work
+ * just as under Linux (e.g. <sys/socket.h>) and the Winsock headers should
+ * never be included when __CYGWIN__ is defined.
  */
 
-#undef USE_WINSOCK
-
-#ifdef HAVE_WINSOCK2_H
-#  define USE_WINSOCK 2
-#else
-#  ifdef HAVE_WINSOCK_H
-#    error "WinSock version 1 is no longer supported, version 2 is required!"
+#ifdef _WIN32
+#  if defined(UNICODE) && !defined(_UNICODE)
+#    error "UNICODE is defined but _UNICODE is not defined"
+#  endif
+#  if defined(_UNICODE) && !defined(UNICODE)
+#    error "_UNICODE is defined but UNICODE is not defined"
+#  endif
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#  include <windows.h>
+#  include <winerror.h>
+#  include <tchar.h>
+#  ifdef UNICODE
+     typedef wchar_t *(*curl_wcsdup_callback)(const wchar_t *str);
 #  endif
 #endif
 
@@ -79,29 +93,17 @@
  * newer symbols.
  */
 
-#ifndef _WIN32_WINNT_NT4
-#define _WIN32_WINNT_NT4            0x0400   /* Windows NT 4.0 */
-#endif
-#ifndef _WIN32_WINNT_WIN2K
-#define _WIN32_WINNT_WIN2K          0x0500   /* Windows 2000 */
-#endif
 #ifndef _WIN32_WINNT_WINXP
 #define _WIN32_WINNT_WINXP          0x0501   /* Windows XP */
 #endif
 #ifndef _WIN32_WINNT_WS03
 #define _WIN32_WINNT_WS03           0x0502   /* Windows Server 2003 */
 #endif
-#ifndef _WIN32_WINNT_WIN6
-#define _WIN32_WINNT_WIN6           0x0600   /* Windows Vista */
-#endif
 #ifndef _WIN32_WINNT_VISTA
 #define _WIN32_WINNT_VISTA          0x0600   /* Windows Vista */
 #endif
 #ifndef _WIN32_WINNT_WS08
 #define _WIN32_WINNT_WS08           0x0600   /* Windows Server 2008 */
-#endif
-#ifndef _WIN32_WINNT_LONGHORN
-#define _WIN32_WINNT_LONGHORN       0x0600   /* Windows Vista */
 #endif
 #ifndef _WIN32_WINNT_WIN7
 #define _WIN32_WINNT_WIN7           0x0601   /* Windows 7 */
@@ -111,9 +113,6 @@
 #endif
 #ifndef _WIN32_WINNT_WINBLUE
 #define _WIN32_WINNT_WINBLUE        0x0603   /* Windows 8.1 */
-#endif
-#ifndef _WIN32_WINNT_WINTHRESHOLD
-#define _WIN32_WINNT_WINTHRESHOLD   0x0A00   /* Windows 10 */
 #endif
 #ifndef _WIN32_WINNT_WIN10
 #define _WIN32_WINNT_WIN10          0x0A00   /* Windows 10 */
